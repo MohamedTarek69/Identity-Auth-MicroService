@@ -63,9 +63,19 @@ namespace Identity_Auth_MicroService.Web
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWTOptions:SecretKey"]!))
                 };
             });
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy.AllowAnyOrigin()
+                          .AllowAnyMethod()
+                          .AllowAnyHeader();
+                });
+            });
             #endregion
 
             var app = builder.Build();
+            app.UseCors("AllowAll");
 
             #region Configure the HTTP request pipeline
             // Configure the HTTP request pipeline.
