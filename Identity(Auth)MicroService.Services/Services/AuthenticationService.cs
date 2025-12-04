@@ -27,7 +27,7 @@ namespace Identity_Auth_MicroService.Services.Services
         }
 
 
-        public async Task<Result<UserDTO>> LoginAsync(LoginDTO loginDTO)
+        public async Task<Result<LoginReturnedDataDTO>> LoginAsync(LoginDTO loginDTO)
         {
             var User = await _userManager.FindByEmailAsync(loginDTO.Email);
             if (User == null)
@@ -38,7 +38,7 @@ namespace Identity_Auth_MicroService.Services.Services
                 return Error.InvalidCredentials("User.InvalidCredentials");
 
             var Token = await CreateTokenAsync(User);
-            return new UserDTO(User.DisplayName, User.Email!, Token);
+            return new LoginReturnedDataDTO(User.DisplayName, User.Email!, Token);
 
         }
 
@@ -56,9 +56,7 @@ namespace Identity_Auth_MicroService.Services.Services
             if (IdentityResult.Succeeded)
             {
                 var Token = await CreateTokenAsync(User);
-                User.Token = Token;
-                await _userManager.UpdateAsync(User);
-                return new UserDTO(User.DisplayName, User.Email!, Token);
+                return new UserDTO(User.DisplayName, User.Email!);
             }
 
             return IdentityResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
@@ -101,13 +99,13 @@ namespace Identity_Auth_MicroService.Services.Services
             return User != null;
         }
 
-        public async Task<Result<UserDTO>> GetUserByEmailAsync(string Email)
+        public async Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email)
         {
             var User = await _userManager.FindByEmailAsync(Email);
             if (User == null)
                 return Error.NotFound("User.NotFound", $"No User With This Email {Email} Was Found");
 
-            return new UserDTO(User.Email!, User.DisplayName, await CreateTokenAsync(User));
+            return new LoginReturnedDataDTO(User.Email!, User.DisplayName, await CreateTokenAsync(User));
         }
     }
 }

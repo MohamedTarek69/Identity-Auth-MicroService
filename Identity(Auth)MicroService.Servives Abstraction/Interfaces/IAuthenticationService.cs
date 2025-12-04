@@ -12,11 +12,11 @@ namespace Identity_Auth_MicroService.Services_Abstraction.Interfaces
     {
         // Login
         // Email, Password => Token, Display Name, Email
-        Task<Result<UserDTO>> LoginAsync(LoginDTO loginDTO);
+        Task<Result<LoginReturnedDataDTO>> LoginAsync(LoginDTO loginDTO);
         // Register
         // Display Name, PhoneNumber, Email, Password => Token, Display Name, Email
         Task<Result<UserDTO>> RegisterAsync(RegisterDTO registerDTO);
         Task<bool> CheckEmailAsync(string Email);
-        Task<Result<UserDTO>> GetUserByEmailAsync(string Email);
+        Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email);
     }
 }

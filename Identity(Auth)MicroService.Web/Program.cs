@@ -75,7 +75,6 @@ namespace Identity_Auth_MicroService.Web
             #endregion
 
             var app = builder.Build();
-            app.UseCors("AllowAll");
 
             #region Configure the HTTP request pipeline
             // Configure the HTTP request pipeline.
@@ -85,12 +84,14 @@ namespace Identity_Auth_MicroService.Web
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+            app.UseHttpsRedirection();
+
+            app.UseCors("AllowAll");
 
             app.UseAuthentication();
 
             app.UseAuthorization();
 
-            app.UseHttpsRedirection();
 
             app.MapControllers();
 

@@ -6,9 +6,10 @@ using System.Threading.Tasks;
 
 namespace Identity_Auth_MicroService.Shared.IdentityDTO
 {
-    public record UserDTO
+    public record LoginReturnedDataDTO
     (
         string DisplayName,
-        string Email
+        string Email,
+        string Token
     );
 }
