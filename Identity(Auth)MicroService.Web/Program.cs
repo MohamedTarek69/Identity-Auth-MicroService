@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 using MyAuthService = Identity_Auth_MicroService.Services.Services.AuthenticationService;
 using MyIAuthService = Identity_Auth_MicroService.Services_Abstraction.Interfaces.IAuthenticationService;
 
-//ssssssss
+
 namespace Identity_Auth_MicroService.Web
 {
     public class Program
