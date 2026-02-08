@@ -8,8 +8,10 @@ namespace Identity_Auth_MicroService.Shared.IdentityDTO
 {
     public record LoginReturnedDataDTO
     (
-        string DisplayName,
-        string Email,
-        string Token
+         string DisplayName,
+         string Email,
+         string AccessToken,
+         string RefreshToken,
+         DateTime RefreshTokenExpiresAt
     );
 }

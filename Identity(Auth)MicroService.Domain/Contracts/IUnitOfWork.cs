@@ -10,6 +10,6 @@ namespace Identity_Auth_MicroService.Domain.Contracts
     public interface IUnitOfWork
     {
         Task<int> SaveChangesAsync();
-        IGenericRepository<TEntity> GetRepository<TEntity>() where TEntity : IdentityUser;
+        public IGenericRepository<TEntity> GetRepository<TEntity>() where TEntity : class;
     }
 }

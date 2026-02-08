@@ -1,7 +1,11 @@
 
+using Identity_Auth_MicroService.Domain.Contracts;
 using Identity_Auth_MicroService.Domain.Entities.IdenetityModule;
+using Identity_Auth_MicroService.Presistance.Data.DataSeed;
 using Identity_Auth_MicroService.Presistance.Data.DbContexts;
+using Identity_Auth_MicroService.Presistance.Repositories;
 using Identity_Auth_MicroService.Web.CustomMiddleWares;
+using Identity_Auth_MicroService.Web.Extentions;
 using Identity_Auth_MicroService.Web.Factories;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -40,6 +44,8 @@ namespace Identity_Auth_MicroService.Web
                 options.InvalidModelStateResponseFactory = ApiResponseFactory.GenerateApiValidationResponse;
             });
             builder.Services.AddScoped<MyIAuthService, MyAuthService>();
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
 
             builder.Services.AddIdentityCore<ApplicationUser>()
                             .AddRoles<IdentityRole>()
@@ -72,9 +78,26 @@ namespace Identity_Auth_MicroService.Web
                           .AllowAnyHeader();
                 });
             });
+            
+
+            builder.Services.AddScoped<IDataIntializer, IdentityDataIntializer>();
+
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.ListenAnyIP(5227);
+                options.ListenAnyIP(7179, listenOptions => listenOptions.UseHttps());
+            });
             #endregion
 
             var app = builder.Build();
+
+            #region DataSeed - Apply Migration
+
+            
+            await app.MigrateIdentityDatabaseAsync();
+            await app.SeedIdentityDataAsync();
+
+            #endregion
 
             #region Configure the HTTP request pipeline
             // Configure the HTTP request pipeline.
@@ -84,8 +107,9 @@ namespace Identity_Auth_MicroService.Web
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
-            app.UseHttpsRedirection();
 
+
+            app.UseRouting();
             app.UseCors("AllowAll");
 
             app.UseAuthentication();

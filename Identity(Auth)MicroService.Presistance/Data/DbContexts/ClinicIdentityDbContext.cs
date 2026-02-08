@@ -29,5 +29,7 @@ namespace Identity_Auth_MicroService.Presistance.Data.DbContexts
             builder.Entity<IdentityUserToken<string>>().ToTable("UserTokens");
 
         }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
+
     }
 }

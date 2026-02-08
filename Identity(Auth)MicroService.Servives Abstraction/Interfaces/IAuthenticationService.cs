@@ -1,4 +1,5 @@
-﻿using Identity_Auth_MicroService.Shared.CommonResult;
+﻿using Identity_Auth_MicroService.Domain.Entities.IdenetityModule;
+using Identity_Auth_MicroService.Shared.CommonResult;
 using Identity_Auth_MicroService.Shared.IdentityDTO;
 using System;
 using System.Collections.Generic;
@@ -18,5 +19,10 @@ namespace Identity_Auth_MicroService.Services_Abstraction.Interfaces
         Task<Result<UserDTO>> RegisterAsync(RegisterDTO registerDTO);
         Task<bool> CheckEmailAsync(string Email);
         Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email);
+        Task<bool> DeleteUserByEmailAsync(string Email);
+        Task<Result<LoginReturnedDataDTO>> RefreshAsync(RefreshRequestDTO dto);
+        Task<Result<bool>> LogoutAsync(LogoutRequestDTO dto);
+
+
     }
 }

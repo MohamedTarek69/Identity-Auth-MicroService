@@ -18,19 +18,18 @@ namespace Identity_Auth_MicroService.Presistance.Repositories
             _dbContext = dbContext;
         }
 
-        public IGenericRepository<TEntity> GetRepository<TEntity>() where TEntity : IdentityUser
+        public IGenericRepository<TEntity> GetRepository<TEntity>() where TEntity : class
         {
             var entityType = typeof(TEntity);
 
-            if (_repositories.TryGetValue(entityType, out object? repository))
-                return (IGenericRepository<TEntity>)_repositories[entityType];
+            if (_repositories.TryGetValue(entityType, out var repo))
+                return (IGenericRepository<TEntity>)repo;
 
-            var newRepository = new GenericRepository<TEntity>(_dbContext);
-            _repositories[entityType] = newRepository;
-            return newRepository;
-
-
+            var newRepo = new GenericRepository<TEntity>(_dbContext);
+            _repositories[entityType] = newRepo;
+            return newRepo;
         }
+
 
         public Task<int> SaveChangesAsync()
         {

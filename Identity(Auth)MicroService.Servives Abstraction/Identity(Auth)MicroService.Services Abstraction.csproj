@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Identity(Auth)MicroService.Domain\Identity(Auth)MicroService.Domain.csproj" />
     <ProjectReference Include="..\Identity(Auth)MicroService.Shared\Identity(Auth)MicroService.Shared.csproj" />
   </ItemGroup>
 
