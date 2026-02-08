@@ -1,0 +1,6 @@
+@Clinic.ApiGateway_HostAddress = http://localhost:5269
+
+GET {{Clinic.ApiGateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

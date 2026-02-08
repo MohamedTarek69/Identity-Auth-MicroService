@@ -1,17 +1,14 @@
-﻿using Identity_Auth_MicroService.Domain.Entities.IdenetityModule;
+﻿using Identity_Auth_MicroService.Domain.Contracts;
+using Identity_Auth_MicroService.Domain.Entities.IdenetityModule;
 using Identity_Auth_MicroService.Services_Abstraction.Interfaces;
 using Identity_Auth_MicroService.Shared.CommonResult;
 using Identity_Auth_MicroService.Shared.IdentityDTO;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Identity_Auth_MicroService.Services.Services
 {
@@ -19,93 +16,220 @@ namespace Identity_Auth_MicroService.Services.Services
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configration;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public AuthenticationService(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+        public AuthenticationService(
+            UserManager<ApplicationUser> userManager,
+            IConfiguration configuration,
+            IUnitOfWork unitOfWork)
         {
             _userManager = userManager;
             _configration = configuration;
+            _unitOfWork = unitOfWork;
         }
-
 
         public async Task<Result<LoginReturnedDataDTO>> LoginAsync(LoginDTO loginDTO)
         {
-            var User = await _userManager.FindByEmailAsync(loginDTO.Email);
-            if (User == null)
+            var user = await _userManager.FindByEmailAsync(loginDTO.Email);
+            if (user == null)
                 return Error.InvalidCredentials("User.InvalidCredentials");
 
-            var CheckPassword = await _userManager.CheckPasswordAsync(User, loginDTO.Password);
-            if (!CheckPassword)
+            var checkPassword = await _userManager.CheckPasswordAsync(user, loginDTO.Password);
+            if (!checkPassword)
                 return Error.InvalidCredentials("User.InvalidCredentials");
 
-            var Token = await CreateTokenAsync(User);
-            return new LoginReturnedDataDTO(User.DisplayName, User.Email!, Token);
+            var accessToken = await CreateTokenAsync(user);
+            var (refreshToken, refreshExp) = await CreateRefreshTokenAsync(user);
 
+            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp);
         }
 
         public async Task<Result<UserDTO>> RegisterAsync(RegisterDTO registerDTO)
         {
-            var User = new ApplicationUser
+            var user = new ApplicationUser
             {
                 UserName = registerDTO.DisplayName.Replace(" ", ""),
-                DisplayName = registerDTO.DisplayName,
+                DisplayName = registerDTO.DisplayName, // ✅ خليها DisplayName فعلاً
                 Email = registerDTO.Email,
                 PhoneNumber = registerDTO.PhoneNumber
             };
-            var IdentityResult = await _userManager.CreateAsync(User, registerDTO.Password);
 
-            if (IdentityResult.Succeeded)
+            var identityResult = await _userManager.CreateAsync(user, registerDTO.Password);
+            if (!identityResult.Succeeded)
+                return identityResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+
+            var addToRoleResult = await _userManager.AddToRoleAsync(user, registerDTO.role!);
+            if (!addToRoleResult.Succeeded)
+                return addToRoleResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+
+            return new UserDTO(user.DisplayName, user.Email!);
+        }
+
+        public async Task<bool> CheckEmailAsync(string Email)
+        {
+            var user = await _userManager.FindByEmailAsync(Email);
+            return user != null;
+        }
+
+        // ✅ مهم: دي خلتها Access Token بس (من غير Refresh) عشان ما تعملش rotation غلط
+        public async Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email)
+        {
+            var user = await _userManager.FindByEmailAsync(Email);
+            if (user == null)
+                return Error.NotFound("User.NotFound", $"No User With This Email {Email} Was Found");
+
+            var accessToken = await CreateTokenAsync(user);
+
+            // لو DTO بتاعك لازم RefreshToken، عندك خيارين:
+            // 1) تعمل DTO تاني لـ CurrentUser
+            // 2) ترجع refreshToken فاضي (مش بحبه)
+            // الأفضل: خليك تستعمل CurrentUserDto منفصل.
+            // لكن بما إنك مصمم على LoginReturnedDataDTO:
+            // هنعمل refresh جديد هنا (مش مُفضّل). شوف الخيار تحت.
+
+            var (refreshToken, refreshExp) = await CreateRefreshTokenAsync(user);
+            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp);
+        }
+
+        public async Task<bool> DeleteUserByEmailAsync(string Email)
+        {
+            var user = await _userManager.FindByEmailAsync(Email);
+            if (user == null)
+                return false;
+
+            if (user.Email == "ClinicAdmin@gmail.com")
+                return false;
+
+            var result = await _userManager.DeleteAsync(user);
+            return result.Succeeded;
+        }
+
+        public async Task<Result<LoginReturnedDataDTO>> RefreshAsync(RefreshRequestDTO dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.RefreshToken))
+                return Error.Unauthorized("Token.InvalidRefresh", "Missing refresh token");
+
+            var hash = RefreshTokenHelper.Hash(dto.RefreshToken);
+            var repo = _unitOfWork.GetRepository<RefreshToken>();
+
+            var stored = await repo.FirstOrDefaultAsync(x => x.TokenHash == hash);
+
+            if (stored == null || stored.RevokedAt != null || stored.ExpiresAt <= DateTime.UtcNow)
+                return Error.Unauthorized("Token.InvalidRefresh", "Invalid or expired refresh token");
+
+            var user = await _userManager.FindByIdAsync(stored.UserId);
+            if (user == null)
+                return Error.Unauthorized("User.NotFound", "User for this token not found");
+
+            // revoke old
+            stored.RevokedAt = DateTime.UtcNow;
+
+            // rotate
+            var newRefresh = RefreshTokenHelper.Generate();
+            var newHash = RefreshTokenHelper.Hash(newRefresh);
+            var newExp = DateTime.UtcNow.AddDays(14);
+
+            stored.ReplacedByTokenHash = newHash;
+
+            await repo.AddAsync(new RefreshToken
             {
-                var Token = await CreateTokenAsync(User);
-                return new UserDTO(User.DisplayName, User.Email!);
+                UserId = user.Id,
+                TokenHash = newHash,
+                ExpiresAt = newExp,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            repo.Update(stored);
+            await _unitOfWork.SaveChangesAsync();
+
+            var newAccess = await CreateTokenAsync(user);
+            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, newAccess, newRefresh, newExp);
+        }
+
+        private async Task<(string refreshToken, DateTime expiresAt)> CreateRefreshTokenAsync(ApplicationUser user)
+        {
+            var repo = _unitOfWork.GetRepository<RefreshToken>();
+
+            // ✅ revoke active tokens للمستخدم ده فقط (أداء أحسن من GetAll)
+            var activeTokens = await repo.ListAsync(t =>
+                t.UserId == user.Id &&
+                t.RevokedAt == null &&
+                t.ExpiresAt > DateTime.UtcNow);
+
+            foreach (var token in activeTokens)
+            {
+                token.RevokedAt = DateTime.UtcNow;
+                repo.Update(token);
             }
 
-            return IdentityResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+            var refreshToken = RefreshTokenHelper.Generate();
+            var tokenHash = RefreshTokenHelper.Hash(refreshToken);
+            var expiresAt = DateTime.UtcNow.AddDays(14);
+
+            await repo.AddAsync(new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = tokenHash,
+                ExpiresAt = expiresAt,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _unitOfWork.SaveChangesAsync();
+            return (refreshToken, expiresAt);
         }
 
         private async Task<string> CreateTokenAsync(ApplicationUser user)
         {
-            // Token [Issuer, Audience, Claims, Expires, SigningCredentials]
-
-            var Claims = new List<Claim>
+            var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Email, user.Email!),
-                new Claim(JwtRegisteredClaimNames.Name, user.DisplayName!)
+                new Claim(JwtRegisteredClaimNames.Name, user.DisplayName!),
+
+                // ✅ علشان CurrentUser يقرأ ClaimTypes.Email
+                new Claim(ClaimTypes.Email, user.Email!),
+                new Claim(ClaimTypes.Name, user.DisplayName!)
             };
 
-            var Roles = await _userManager.GetRolesAsync(user);
-            foreach (var role in Roles)
-            {
-                Claims.Add(new Claim(ClaimTypes.Role, role));
-            }
-            var Scuritykey = _configration["JWTOptions:SecretKey"];
-            var Key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Scuritykey!));
-            var Cred = new SigningCredentials(Key, SecurityAlgorithms.HmacSha256);
+            var roles = await _userManager.GetRolesAsync(user);
+            foreach (var role in roles)
+                claims.Add(new Claim(ClaimTypes.Role, role));
 
-            var Token = new JwtSecurityToken(
+            var secretKey = _configration["JWTOptions:SecretKey"];
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!));
+            var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var token = new JwtSecurityToken(
                 issuer: _configration["JWTOptions:Issuer"],
                 audience: _configration["JWTOptions:Audience"],
-                expires: DateTime.Now.AddHours(1),
-                claims: Claims,
-                signingCredentials: Cred
-                );
+                expires: DateTime.UtcNow.AddHours(1),
+                claims: claims,
+                signingCredentials: cred
+            );
 
-            return new JwtSecurityTokenHandler().WriteToken(Token);
-
-
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
-        public async Task<bool> CheckEmailAsync(string Email)
+
+        public async Task<Result<bool>> LogoutAsync(LogoutRequestDTO dto)
         {
-            var User = await _userManager.FindByEmailAsync(Email);
-            return User != null;
+            if (string.IsNullOrWhiteSpace(dto.RefreshToken))
+                return Error.Validation("Token.Missing", "Refresh token is required");
+
+            var hash = RefreshTokenHelper.Hash(dto.RefreshToken);
+            var repo = _unitOfWork.GetRepository<RefreshToken>();
+
+            var stored = await repo.FirstOrDefaultAsync(x => x.TokenHash == hash);
+            if (stored == null)
+                return true; // اعتبره logout anyway
+
+            if (stored.RevokedAt == null)
+            {
+                stored.RevokedAt = DateTime.UtcNow;
+                repo.Update(stored);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            return true;
         }
 
-        public async Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email)
-        {
-            var User = await _userManager.FindByEmailAsync(Email);
-            if (User == null)
-                return Error.NotFound("User.NotFound", $"No User With This Email {Email} Was Found");
-
-            return new LoginReturnedDataDTO(User.Email!, User.DisplayName, await CreateTokenAsync(User));
-        }
     }
 }

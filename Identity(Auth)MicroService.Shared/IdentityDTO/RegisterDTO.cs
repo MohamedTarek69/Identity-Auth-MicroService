@@ -18,6 +18,7 @@ namespace Identity_Auth_MicroService.Shared.IdentityDTO
         string Password,
         [Required]
         [Phone]
-        string PhoneNumber
+        string PhoneNumber,
+        string? role = "User"
         );
 }

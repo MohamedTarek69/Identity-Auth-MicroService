@@ -46,7 +46,7 @@ namespace Identity_Auth_MicroService.Presentation.Controllers
             var exists = await _authenticationService.CheckEmailAsync(email);
             return Ok(exists);
         }
-        [Authorize]
+
         [HttpGet("CurrentUser")]
         public async Task<ActionResult> GetCurrentUser()
         {
@@ -60,5 +60,34 @@ namespace Identity_Auth_MicroService.Presentation.Controllers
             var result = await _authenticationService.GetUserByEmailAsync(email);
             return HandleResult(result);
         }
+
+        [Authorize(Roles = "Admin")]
+        [HttpDelete("DeleteUser")]
+        public async Task<ActionResult> DeleteUser(string email)
+        {
+            var result = await _authenticationService.DeleteUserByEmailAsync(email);
+            if (!result)
+            {
+                var errors = Error.NotFound("User.NotFound", "No current user found");
+                return HandleResult(Result<UserDTO>.Fail(errors));
+            }
+            return Ok("User deleted successfully");
+        }
+
+        [HttpPost("Refresh")]
+        public async Task<ActionResult> Refresh([FromBody] RefreshRequestDTO dto)
+        {
+            var result = await _authenticationService.RefreshAsync(dto);
+            return HandleResult(result);
+        }
+
+        [HttpPost("Logout")]
+        public async Task<ActionResult> Logout([FromBody] LogoutRequestDTO dto)
+        {
+            var result = await _authenticationService.LogoutAsync(dto);
+            return HandleResult(result);
+        }
+
+
     }
 }
