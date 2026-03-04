@@ -1,6 +1,7 @@
 ﻿using Identity_Auth_MicroService.Domain.Contracts;
 using Identity_Auth_MicroService.Domain.Entities.IdenetityModule;
 using Identity_Auth_MicroService.Services_Abstraction.Interfaces;
+using Identity_Auth_MicroService.Servives_Abstraction.Interfaces;
 using Identity_Auth_MicroService.Shared.CommonResult;
 using Identity_Auth_MicroService.Shared.IdentityDTO;
 using Microsoft.AspNetCore.Identity;
@@ -17,15 +18,18 @@ namespace Identity_Auth_MicroService.Services.Services
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configration;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IClinicClient _clinicClient;
 
         public AuthenticationService(
             UserManager<ApplicationUser> userManager,
             IConfiguration configuration,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IClinicClient clinicClient)
         {
             _userManager = userManager;
             _configration = configuration;
             _unitOfWork = unitOfWork;
+            _clinicClient = clinicClient;
         }
 
         public async Task<Result<LoginReturnedDataDTO>> LoginAsync(LoginDTO loginDTO)
@@ -37,6 +41,13 @@ namespace Identity_Auth_MicroService.Services.Services
             var checkPassword = await _userManager.CheckPasswordAsync(user, loginDTO.Password);
             if (!checkPassword)
                 return Error.InvalidCredentials("User.InvalidCredentials");
+
+            if (await _userManager.IsInRoleAsync(user, "Doctor"))
+            {
+                var isActive = await _clinicClient.IsDoctorActiveAsync(user.Id); // user.Id = IdentityUserId
+                if (!isActive)
+                    return Error.Validation("Doctor.Inactive", "Your account is not active. Please contact admin.");
+            }
 
             var accessToken = await CreateTokenAsync(user);
             var (refreshToken, refreshExp) = await CreateRefreshTokenAsync(user);
@@ -62,7 +73,7 @@ namespace Identity_Auth_MicroService.Services.Services
             if (!addToRoleResult.Succeeded)
                 return addToRoleResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
 
-            return new UserDTO(user.DisplayName, user.Email!);
+            return new UserDTO(user.Id,user.DisplayName, user.Email!);
         }
 
         public async Task<bool> CheckEmailAsync(string Email)
@@ -71,7 +82,6 @@ namespace Identity_Auth_MicroService.Services.Services
             return user != null;
         }
 
-        // ✅ مهم: دي خلتها Access Token بس (من غير Refresh) عشان ما تعملش rotation غلط
         public async Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email)
         {
             var user = await _userManager.FindByEmailAsync(Email);
@@ -91,18 +101,30 @@ namespace Identity_Auth_MicroService.Services.Services
             return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp);
         }
 
-        public async Task<bool> DeleteUserByEmailAsync(string Email)
+        public async Task<Result<bool>> DeleteUserByEmailAsync(string Email)
         {
             var user = await _userManager.FindByEmailAsync(Email);
+
             if (user == null)
-                return false;
+                return Result<bool>.Fail(
+                    Error.NotFound("User.NotFound", $"No User With This Email {Email} Was Found")
+                );
 
             if (user.Email == "ClinicAdmin@gmail.com")
-                return false;
+                return Result<bool>.Fail(
+                    Error.Forbidden("User.Forbidden", "Cannot delete admin user")
+                );
 
             var result = await _userManager.DeleteAsync(user);
-            return result.Succeeded;
+
+            if (!result.Succeeded)
+                return Result<bool>.Fail(
+                    result.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList()
+                );
+
+            return Result<bool>.Ok(true);
         }
+
 
         public async Task<Result<LoginReturnedDataDTO>> RefreshAsync(RefreshRequestDTO dto)
         {
@@ -181,15 +203,21 @@ namespace Identity_Auth_MicroService.Services.Services
         private async Task<string> CreateTokenAsync(ApplicationUser user)
         {
             var claims = new List<Claim>
-            {
-                new Claim(JwtRegisteredClaimNames.Email, user.Email!),
-                new Claim(JwtRegisteredClaimNames.Name, user.DisplayName!),
+                {
+                    // 🔹 Standard Claims
+                    new Claim(JwtRegisteredClaimNames.Sub, user.Id), // مهم جدًا
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
 
-                // ✅ علشان CurrentUser يقرأ ClaimTypes.Email
-                new Claim(ClaimTypes.Email, user.Email!),
-                new Claim(ClaimTypes.Name, user.DisplayName!)
-            };
+                    new Claim(JwtRegisteredClaimNames.Email, user.Email!),
+                    new Claim(JwtRegisteredClaimNames.UniqueName, user.UserName!),
 
+                    // 🔹 ASP.NET Identity Compatible Claims
+                    new Claim(ClaimTypes.NameIdentifier, user.Id),   // مهم جدًا للـ Owner check
+                    new Claim(ClaimTypes.Email, user.Email!),
+                    new Claim(ClaimTypes.Name, user.DisplayName!)
+                };
+
+            // 🔹 Roles
             var roles = await _userManager.GetRolesAsync(user);
             foreach (var role in roles)
                 claims.Add(new Claim(ClaimTypes.Role, role));
@@ -228,6 +256,76 @@ namespace Identity_Auth_MicroService.Services.Services
                 await _unitOfWork.SaveChangesAsync();
             }
 
+            return true;
+        }
+
+        public async Task<Result<UserDTO>> UpdateUserAsync(string userId, UpdateUserDto dto)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return Error.NotFound("User.NotFound", $"No User With This Id {userId} Was Found");
+
+            // =========================
+            // Email (only if sent & changed)
+            // =========================
+            if (!string.IsNullOrWhiteSpace(dto.Email) &&
+                !string.Equals(user.Email, dto.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                var existing = await _userManager.FindByEmailAsync(dto.Email);
+                if (existing != null && existing.Id != user.Id)
+                    return Error.Validation("User.EmailExists", "Email is already used by another user");
+
+                var setEmail = await _userManager.SetEmailAsync(user, dto.Email);
+                if (!setEmail.Succeeded)
+                    return setEmail.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+
+                var setUserName = await _userManager.SetUserNameAsync(user, dto.Email);
+                if (!setUserName.Succeeded)
+                    return setUserName.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+            }
+
+            // =========================
+            // DisplayName (only if sent)
+            // =========================
+            if (!string.IsNullOrWhiteSpace(dto.DisplayName))
+                user.DisplayName = dto.DisplayName;
+
+            // =========================
+            // Phone (only if sent)
+            // =========================
+            if (!string.IsNullOrWhiteSpace(dto.PhoneNumber))
+                user.PhoneNumber = dto.PhoneNumber;
+
+            // لو مفيش أي تغيير في بيانات البروفايل… ممكن تتجنب UpdateAsync (اختياري)
+            // بس خلينا نعمل UpdateAsync عادي
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+                return updateResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+
+            //// =========================
+            //// Password (only if sent)
+            //// =========================
+            //if (!string.IsNullOrWhiteSpace(dto.Password))
+            //{
+            //    var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            //    var resetResult = await _userManager.ResetPasswordAsync(user, resetToken, dto.Password);
+
+            //    if (!resetResult.Succeeded)
+            //        return resetResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+            //}
+
+            return new UserDTO(user.Id, user.DisplayName, user.Email!);
+        }
+
+        public async Task<Result<bool>> UpdatePassword(string userId, UpdatePasswordDto password)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return Error.NotFound("User.NotFound", $"No User With This Id {userId} Was Found");
+            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var resetResult = await _userManager.ResetPasswordAsync(user, resetToken, password.NewPassword);
+            if (!resetResult.Succeeded)
+                return resetResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
             return true;
         }
 

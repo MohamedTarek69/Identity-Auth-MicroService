@@ -19,9 +19,11 @@ namespace Identity_Auth_MicroService.Services_Abstraction.Interfaces
         Task<Result<UserDTO>> RegisterAsync(RegisterDTO registerDTO);
         Task<bool> CheckEmailAsync(string Email);
         Task<Result<LoginReturnedDataDTO>> GetUserByEmailAsync(string Email);
-        Task<bool> DeleteUserByEmailAsync(string Email);
+        Task<Result<bool>> DeleteUserByEmailAsync(string Email);
         Task<Result<LoginReturnedDataDTO>> RefreshAsync(RefreshRequestDTO dto);
         Task<Result<bool>> LogoutAsync(LogoutRequestDTO dto);
+        Task<Result<UserDTO>> UpdateUserAsync(string userId, UpdateUserDto dto);
+        Task<Result<bool>> UpdatePassword(string userId, UpdatePasswordDto password);
 
 
     }
