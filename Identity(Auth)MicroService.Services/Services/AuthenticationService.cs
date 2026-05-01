@@ -51,8 +51,9 @@ namespace Identity_Auth_MicroService.Services.Services
 
             var accessToken = await CreateTokenAsync(user);
             var (refreshToken, refreshExp) = await CreateRefreshTokenAsync(user);
+            var roles = await _userManager.GetRolesAsync(user);
 
-            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp);
+            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp,roles);
         }
 
         public async Task<Result<UserDTO>> RegisterAsync(RegisterDTO registerDTO)
@@ -98,7 +99,8 @@ namespace Identity_Auth_MicroService.Services.Services
             // هنعمل refresh جديد هنا (مش مُفضّل). شوف الخيار تحت.
 
             var (refreshToken, refreshExp) = await CreateRefreshTokenAsync(user);
-            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp);
+            var roles = await _userManager.GetRolesAsync(user);
+            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, accessToken, refreshToken, refreshExp, roles);
         }
 
         public async Task<Result<bool>> DeleteUserByEmailAsync(string Email)
@@ -165,7 +167,8 @@ namespace Identity_Auth_MicroService.Services.Services
             await _unitOfWork.SaveChangesAsync();
 
             var newAccess = await CreateTokenAsync(user);
-            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, newAccess, newRefresh, newExp);
+            var roles = await _userManager.GetRolesAsync(user);
+            return new LoginReturnedDataDTO(user.DisplayName, user.Email!, newAccess, newRefresh, newExp, roles);
         }
 
         private async Task<(string refreshToken, DateTime expiresAt)> CreateRefreshTokenAsync(ApplicationUser user)

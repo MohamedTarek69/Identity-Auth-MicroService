@@ -93,7 +93,7 @@ namespace Identity_Auth_MicroService.Web
                 options.AddPolicy("AdminOnly", p => p.RequireRole("Admin"));
                 options.AddPolicy("DoctorOnly", p => p.RequireRole("Doctor"));
                 options.AddPolicy("LabOnly", p => p.RequireRole("Lab"));
-                options.AddPolicy("UserOnly", p => p.RequireRole("User"));
+                options.AddPolicy("PatientOnly", p => p.RequireRole("Patient"));
             });
 
             builder.Services.AddCors(options =>
