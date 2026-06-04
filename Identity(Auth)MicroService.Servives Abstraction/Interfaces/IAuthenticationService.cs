@@ -24,6 +24,8 @@ namespace Identity_Auth_MicroService.Services_Abstraction.Interfaces
         Task<Result<bool>> LogoutAsync(LogoutRequestDTO dto);
         Task<Result<UserDTO>> UpdateUserAsync(string userId, UpdateUserDto dto);
         Task<Result<bool>> UpdatePassword(string userId, UpdatePasswordDto password);
+        Task<Result<List<UserDTO>>> GetAllUsersAsync();
+        Task<Result<ReturnUserDataDTO>> GetUserByIdAsync(string userId);
 
 
     }

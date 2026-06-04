@@ -134,5 +134,23 @@ namespace Identity_Auth_MicroService.Presentation.Controllers
             var result = await _authenticationService.UpdatePassword(id, dto);
             return HandleResult(result);
         }
+
+        // ✅ Admin only
+        [Authorize]
+        [HttpGet("AllUsers")]
+        public async Task<ActionResult> GetAllUsers()
+        {
+            var result = await _authenticationService.GetAllUsersAsync();
+            return HandleResult(result);
+        }
+
+        // ✅ Public
+        [AllowAnonymous]
+        [HttpGet("UserById/{id}")]
+        public async Task<ActionResult> GetUserById(string id)
+        {
+            var result = await _authenticationService.GetUserByIdAsync(id);
+            return HandleResult(result);
+        }
     }
 }

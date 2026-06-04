@@ -5,6 +5,7 @@ using Identity_Auth_MicroService.Servives_Abstraction.Interfaces;
 using Identity_Auth_MicroService.Shared.CommonResult;
 using Identity_Auth_MicroService.Shared.IdentityDTO;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -58,23 +59,42 @@ namespace Identity_Auth_MicroService.Services.Services
 
         public async Task<Result<UserDTO>> RegisterAsync(RegisterDTO registerDTO)
         {
+            // Check Email
+            var existingEmail = await _userManager.FindByEmailAsync(registerDTO.Email);
+
+            if (existingEmail is not null)
+                return Error.Validation("EmailExists", "Email already exists");
+
+            // Check Phone Number
+            var existingPhone = await _userManager.Users
+                .FirstOrDefaultAsync(x => x.PhoneNumber == registerDTO.PhoneNumber);
+
+            if (existingPhone is not null)
+                return Error.Validation("PhoneExists", "Phone number already exists");
+
             var user = new ApplicationUser
             {
                 UserName = registerDTO.DisplayName.Replace(" ", ""),
-                DisplayName = registerDTO.DisplayName, // ✅ خليها DisplayName فعلاً
+                DisplayName = registerDTO.DisplayName,
                 Email = registerDTO.Email,
                 PhoneNumber = registerDTO.PhoneNumber
             };
 
             var identityResult = await _userManager.CreateAsync(user, registerDTO.Password);
+
             if (!identityResult.Succeeded)
-                return identityResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
+                return identityResult.Errors
+                    .Select(e => Error.Validation(e.Code, e.Description))
+                    .ToList();
 
             var addToRoleResult = await _userManager.AddToRoleAsync(user, registerDTO.role!);
-            if (!addToRoleResult.Succeeded)
-                return addToRoleResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
 
-            return new UserDTO(user.Id,user.DisplayName, user.Email!);
+            if (!addToRoleResult.Succeeded)
+                return addToRoleResult.Errors
+                    .Select(e => Error.Validation(e.Code, e.Description))
+                    .ToList();
+
+            return new UserDTO(user.Id, user.DisplayName, user.Email!);
         }
 
         public async Task<bool> CheckEmailAsync(string Email)
@@ -331,6 +351,26 @@ namespace Identity_Auth_MicroService.Services.Services
                 return resetResult.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
             return true;
         }
+
+        public async Task<Result<List<UserDTO>>> GetAllUsersAsync()
+        {
+            var users = _userManager.Users.ToList();
+            var userDtos = new List<UserDTO>();
+            foreach (var user in users)
+            {
+                userDtos.Add(new UserDTO(user.Id, user.DisplayName, user.Email!));
+            }
+            return await Task.FromResult(userDtos);
+        }
+
+        public async Task<Result<ReturnUserDataDTO>> GetUserByIdAsync(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return Error.NotFound("User.NotFound", $"No User With This Id {userId} Was Found");
+            return new ReturnUserDataDTO(user.DisplayName, user.Email!, user.PhoneNumber!);
+        }
+
 
     }
 }
