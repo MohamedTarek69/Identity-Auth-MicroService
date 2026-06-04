@@ -28,6 +28,14 @@ namespace Identity_Auth_MicroService.Presistance.Data.DbContexts
             builder.Entity<IdentityRoleClaim<string>>().ToTable("RoleClaims");
             builder.Entity<IdentityUserToken<string>>().ToTable("UserTokens");
 
+            builder.Entity<ApplicationUser>()
+                   .HasIndex(x => x.Email)
+                   .IsUnique();
+
+            builder.Entity<ApplicationUser>()
+                   .HasIndex(x => x.PhoneNumber)
+                   .IsUnique();
+
         }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
 

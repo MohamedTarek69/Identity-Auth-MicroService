@@ -35,7 +35,7 @@ namespace Identity_Auth_MicroService.Presistance.Data.DataSeed
                     await _roleManager.CreateAsync(new IdentityRole("Clinic"));
                     await _roleManager.CreateAsync(new IdentityRole("Lab"));
                     await _roleManager.CreateAsync(new IdentityRole("Doctor"));
-                    await _roleManager.CreateAsync(new IdentityRole("User"));
+                    await _roleManager.CreateAsync(new IdentityRole("Patient"));
                     await _roleManager.CreateAsync(new IdentityRole("Admin"));
 
                 }
@@ -43,12 +43,12 @@ namespace Identity_Auth_MicroService.Presistance.Data.DataSeed
                 {
                     var User01 = new ApplicationUser
                     {
-                        DisplayName ="ClinciAdmin",
-                        Email="ClinciAdmin@gmail.com",
+                        DisplayName ="ClinicAdmin",
+                        Email="ClinicAdmin@gmail.com",
                         PhoneNumber="01002097078",
                         EmailConfirmed = true,
                         PhoneNumberConfirmed = true,
-                        UserName = "ClinciAdmin"
+                        UserName = "ClinicAdmin"
                     };
                     var result = await _userManager.CreateAsync(User01, "P@ssw0rd");
 

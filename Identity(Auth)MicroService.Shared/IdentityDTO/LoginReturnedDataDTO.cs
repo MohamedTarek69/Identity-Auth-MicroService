@@ -12,6 +12,7 @@ namespace Identity_Auth_MicroService.Shared.IdentityDTO
          string Email,
          string AccessToken,
          string RefreshToken,
-         DateTime RefreshTokenExpiresAt
+         DateTime RefreshTokenExpiresAt,
+         IList<string>? roles = null
     );
 }

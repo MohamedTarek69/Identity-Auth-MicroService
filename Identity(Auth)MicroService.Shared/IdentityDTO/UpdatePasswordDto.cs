@@ -6,10 +6,5 @@ using System.Threading.Tasks;
 
 namespace Identity_Auth_MicroService.Shared.IdentityDTO
 {
-    public record UserDTO
-    (
-        string Id,
-        string DisplayName,
-        string Email
-    );
+    public record UpdatePasswordDto(string NewPassword = default!);
 }
